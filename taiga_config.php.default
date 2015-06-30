@@ -1,4 +1,5 @@
 <?php
 $conf = array(
-  'announce_url' => 'http://username:password@helgahost.com:8080/announce/channelname'
+  'announce_url' => 'http://username:password@helgahost.com:8080/announce/channelname',
+//  'logfile' => '/home/user/taigatohelga.log'
 );
