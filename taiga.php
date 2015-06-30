@@ -2,7 +2,7 @@
 include "taiga_config.php";
 
 $taigaevent = file_get_contents('php://input');
-error_log("taiga notify $taigaevent");
+dpm($taigaevent, 'incoming json');
 $taigaevent = new TaigaEvent($taigaevent);
 post( $conf['announce_url'], http_build_query( array( 'message' => "[Taiga] ".$taigaevent->getInfo() ) ) );
 
