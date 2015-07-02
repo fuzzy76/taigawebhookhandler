@@ -1,94 +1,123 @@
 <?php
 
-/*
-We really should restructure this into a TaigaWebhook class that only parses the incoming json and a TaigaEvent class that contains singular events (TaigaWebhook might even create multiple events for each request).
-
-And then we can do different TaigaOutput classes that sends the output different places. :)
- */
-
 include "taiga_config.php";
-// @todo filter out taskboard_order events
-// @todo don't output changes with no fields
-
-$taigaevent = file_get_contents('php://input');
-dpm($taigaevent, 'incoming json');
-$taigaevent = new TaigaEvent($taigaevent);
-post( $conf['announce_url'], http_build_query( array( 'message' => "[Taiga] ".$taigaevent->getInfo() ) ) );
+$taigawh = new TaigaWebhook();
+dpm($taigawh->json, 'json');
+foreach ($taigawh->events as $event) {
+  dpm($event->getDescription(), 'event');
+  // @todo different output handlers (that's where most of the filtering will happen)
+  post( $conf['announce_url'], http_build_query( array( 'message' => "[Taiga] ".$event->getDescription() ) ) );
+}
 
 function dpm($var, $msg = 'debug') {
   $date = date(DATE_ATOM);
   $var = print_r($var,TRUE);
   $string = "[$date] $msg $var";
   global $conf;
-  if (isset($conf['logfile'])) {
+  if (isset($conf['logfile']) && (php_sapi_name() != 'cli')) {
     error_log($string . "\n", 3, $conf['logfile']);
-  } else {
+  } else if ((php_sapi_name() != 'cli')) {
     error_log($string);
+  } else {
+    echo "$string\n";
   }
 }
 
-class TaigaEvent { // http://taigaio.github.io/taiga-doc/dist/webhooks.html
-
-  public $event = NULL;
-  // Calculated fields
-  public $objectname = '';
-  public $action = 'nop';
-  public $extra = NULL;
-
-  public function __construct($json) {
-    $this->event = json_decode($json, TRUE);
-    $this->objectname = ($this->event['type'] == 'wikipage') ? $this->event['data']['slug'] : $this->event['data']['subject'];
-    $this->action = $this->event['action'];
-    $this->expandChanges(); // Will overwrite action and action_did if necessary
+class TaigaWebhook {
+  public $json = '';
+  public $data = NULL;
+  public $events = array();
+  public function __construct($json = NULL) {
+    if (empty($json)) {
+      if (!($json = file_get_contents('php://input'))) {
+        if (!($json = file_get_contents('php://stdin'))) {
+          // Oops. :p
+        }
+      }
+    }
+    $this->json = $json;
+    $this->data = json_decode($json);
+    $this->parseEvents();
+    //dpm($this);
   }
 
-  function getTypeName() {
-    static $typename = array('milestone' => 'sprint','userstory' => 'user story','wikipage' => 'wiki page');
-    return (isset($typename[$this->event['type']]) ? $typename[$this->event['type']] : $this->event['type']);
+  public function parseEvents() {
+    if ($this->data->action != 'change') {
+      $this->events[] = new TaigaEvent($this->data->action, $this->data->type, $this->getUserName(), $this->getObjectname());
+    } else {
+      foreach ($this->data->change->diff as $diffi => $diffv) {
+        $action = $this->data->action;
+        $type = $this->data->type;
+        $objectname = $this->getObjectname();
+        $username = $this->getUserName();
+        $extra = array($diffi => $diffv->to);
+        switch ($diffi) {
+          case 'assigned_to':
+            $extra = array($diffi, $this->data->data->owner->name);
+            break;
+          case 'description_html':
+          case 'taskboard_order':
+          case 'finish_date':
+            $action = NULL;
+            break;
+          case 'status':
+            $action = 'statuschange';
+            $extra = $this->data->change->values->status[ $diffv->to ];
+          default:
+            break;
+        }
+        if ($action) {
+          $event = new TaigaEvent($action, $type, $username, $objectname, $extra);
+          $this->events[] = $event;
+        }
+      }
+    }
   }
 
-  function getInfo() {
-    $what = ucfirst($this->getTypeName()) . " '{$this->objectname}'";
-    $how = $this->createDescription($this->action);
-    $who = (isset($this->event['change']) ? $this->event['change']['user']['name'] : $this->event['data']['owner']['name']);
+  public function getUserName() {
+    if (isset($this->data->change->user->name))
+      return $this->data->change->user->name;
+    if (isset($this->data->data->owner->name))
+      return $this->data->data->owner->name;
+    return 'N/A';
+  }
+  public function getObjectname() {
+    return ($this->event->type == 'wikipage') ? $this->data->data->slug : $this->data->data->subject;
+  }
+}
+
+class TaigaEvent {
+  public $action, $type, $user, $objectname, $extra;
+
+  public function __construct($action, $type, $user, $objectname, $extra = NULL) {
+    $this->action = $action;
+    $this->type = $type;
+    $this->user = $user;
+    $this->objectname = $objectname;
+    $this->extra = $extra;
+    if ($action == 'change') {
+      foreach($extra as &$val) {
+        if (strlen($val) > 10) {
+          $val = "[...]";
+        }
+      }
+    }
+  }
+
+  public function getDescription() {
+    $what = ucfirst($this->getTypeName()) . " '{$this->objectname}'"; // Task 'do something clever'
+    $how = $this->getAction();
+    $who = $this->user;
     $who = ($this->action == 'delete') ? "$who*" : $who;
     return "$what $how by $who";
   }
 
-  function expandChanges() {
-    if ($this->action == 'change') {
-      $diff = $this->event['change']['diff'];
-      if ( isset($diff['status']) ) {
-        // Status change, lookup new status
-        // NB! This ignore other changes
-        $status_to = $this->event['change']['values']['status'][ $diff['status']['to'] ];
-        $this->action = 'statuschange';
-        $this->extra = $status_to;
-        //$this->extra = (isset($this->event['data']['status']) ? $this->event['data']['status'] : NULL);
-      } else {
-        // General changes, list fields
-        $arr = array();
-        if (isset($diff['description']) && isset($diff['description_html'])) {
-          unset($diff['description_html']); // We don't need both
-        }
-        foreach ($diff as $key => $value) {
-          $val = $value['to'];
-          if ($key == 'assigned_to') {
-            $val == $this->event['data']['owner']['name'];
-          } else if ($key == 'weird stuff') {
-            $val = 'moar';
-          }
-          if (strlen($val) < 10) {
-            $arr[] = "$key=$val";
-          } else {
-            $arr[] = "$key=(...)";
-          }
-        }
-        $this->extra = $arr;
-      }
-    }
+  function getTypeName() {
+    static $typename = array('milestone' => 'sprint','userstory' => 'user story','wikipage' => 'wiki page');
+    return (isset($typename[$this->type]) ? $typename[$this->type] : $this->type);
   }
-  function createDescription($in) {
+
+  function getAction() {
     static $verb = array(
       'create' => 'created',
       'delete' => 'deleted',
@@ -107,15 +136,20 @@ class TaigaEvent { // http://taigaio.github.io/taiga-doc/dist/webhooks.html
       'Postponed' => 'postponed'
     );
 
-    $out = 'undefined action '.$in;
-    if (isset($verb[$in])) {
-      $out = $verb[$in];
-      if ($in == 'change' && is_array($this->extra)) {
-        $out .= " (".implode(',',$this->extra).")";
+    $out = 'undefined action '.$this->action;
+    if (isset($verb[$this->action])) {
+      $out = $verb[$this->action];
+//      if ($in == 'change' && is_array($this->extra)) {
+//        $out .= " (".implode(',',$this->extra).")";
+//      }
+      if ($this->action == 'change') {
+        foreach($this->extra as $i => $v) {
+          $out .= " ($i=$v)";
+        }
       }
     }
 
-    if ($in == 'statuschange') {
+    if ($this->action == 'statuschange') {
       if (isset($statusverb[$this->extra])) {
         $out = $statusverb[$this->extra];
       } else {
@@ -124,6 +158,7 @@ class TaigaEvent { // http://taigaio.github.io/taiga-doc/dist/webhooks.html
     }
     return $out;
   }
+
 }
 
 function post ($url, $body) {
