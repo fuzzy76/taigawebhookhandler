@@ -1,13 +1,24 @@
 <?php
+
+/*
+We really should restructure this into a TaigaWebhook class that only parses the incoming json and a TaigaEvent class that contains singular events (TaigaWebhook might even create multiple events for each request).
+
+And then we can do different TaigaOutput classes that sends the output different places. :)
+ */
+
 include "taiga_config.php";
+// @todo filter out taskboard_order events
+// @todo don't output changes with no fields
 
 $taigaevent = file_get_contents('php://input');
 dpm($taigaevent, 'incoming json');
 $taigaevent = new TaigaEvent($taigaevent);
 post( $conf['announce_url'], http_build_query( array( 'message' => "[Taiga] ".$taigaevent->getInfo() ) ) );
 
-function dpm($var, $msg = '') {
-  $string = ( isset($msg) ? "$msg " : '' ) . print_r($var);
+function dpm($var, $msg = 'debug') {
+  $date = date(DATE_ATOM);
+  $var = print_r($var,TRUE);
+  $string = "[$date] $msg $var";
   global $conf;
   if (isset($conf['logfile'])) {
     error_log($string . "\n", 3, $conf['logfile']);
@@ -56,7 +67,24 @@ class TaigaEvent { // http://taigaio.github.io/taiga-doc/dist/webhooks.html
         //$this->extra = (isset($this->event['data']['status']) ? $this->event['data']['status'] : NULL);
       } else {
         // General changes, list fields
-        $this->extra = array_keys($diff);
+        $arr = array();
+        if (isset($diff['description']) && isset($diff['description_html'])) {
+          unset($diff['description_html']); // We don't need both
+        }
+        foreach ($diff as $key => $value) {
+          $val = $value['to'];
+          if ($key == 'assigned_to') {
+            $val == $this->event['data']['owner']['name'];
+          } else if ($key == 'weird stuff') {
+            $val = 'moar';
+          }
+          if (strlen($val) < 10) {
+            $arr[] = "$key=$val";
+          } else {
+            $arr[] = "$key=(...)";
+          }
+        }
+        $this->extra = $arr;
       }
     }
   }
