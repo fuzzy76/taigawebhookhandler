@@ -6,7 +6,9 @@ dpm($taigawh->json, 'json');
 foreach ($taigawh->events as $event) {
   dpm($event->getDescription(), 'event');
   // @todo different output handlers (that's where most of the filtering will happen)
-  post( $conf['announce_url'], http_build_query( array( 'message' => "[Taiga] ".$event->getDescription() ) ) );
+  if (!in_array($event->action, array('cheesedoodles'))) {
+    post( $conf['announce_url'], http_build_query( array( 'message' => "[Taiga] ".$event->getDescription() ) ) );
+  }
 }
 
 function dpm($var, $msg = 'debug') {
@@ -53,7 +55,7 @@ class TaigaWebhook {
         $extra = array($diffi => $diffv->to);
         switch ($diffi) {
           case 'assigned_to':
-            $extra = array($diffi, $this->data->data->owner->name);
+            $extra = array($diffi => $this->data->data->owner->name);
             break;
           case 'description_html':
           case 'taskboard_order':
@@ -62,7 +64,7 @@ class TaigaWebhook {
             break;
           case 'status':
             $action = 'statuschange';
-            $extra = $this->data->change->values->status[ $diffv->to ];
+            $extra = array($diffi => $this->data->change->values->status[ $diffv->to ]);
           default:
             break;
         }
