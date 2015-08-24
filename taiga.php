@@ -55,7 +55,7 @@ class TaigaWebhook {
         $extra = array($diffi => $diffv->to);
         switch ($diffi) {
           case 'assigned_to':
-            $extra = array($diffi => $this->data->data->owner->name);
+            $extra = array($diffi => $this->data->data->assigned_to->name);
             break;
           case 'description_html':
           case 'taskboard_order':
