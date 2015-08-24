@@ -2,7 +2,7 @@
 
 include "taiga_config.php";
 $taigawh = new TaigaWebhook();
-dpm($taigawh->json, 'json');
+dpm($taigawh->data, 'json');
 foreach ($taigawh->events as $event) {
   dpm($event->getDescription(), 'event');
   // @todo different output handlers (that's where most of the filtering will happen)
@@ -96,7 +96,7 @@ class TaigaEvent {
     $this->type = $type;
     $this->user = $user;
     $this->objectname = $objectname;
-    $this->extra = $extra;
+
     if ($action == 'change') {
       foreach($extra as &$val) {
         if (strlen($val) > 10) {
@@ -104,6 +104,7 @@ class TaigaEvent {
         }
       }
     }
+    $this->extra = $extra;
   }
 
   public function getDescription() {
