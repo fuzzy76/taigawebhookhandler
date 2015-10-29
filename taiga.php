@@ -100,7 +100,7 @@ class TaigaEvent {
 
     if ($action == 'change') {
       foreach($extra as &$val) {
-        if (strlen($val) > 10) {
+        if (strlen($val) > 20) {
           $val = "[...]";
         }
       }
@@ -143,8 +143,6 @@ class TaigaEvent {
     $out = 'undefined action '.$this->action;
     if (isset($verb[$this->action])) {
       $out = $verb[$this->action];
-//      if ($in == 'change' && is_array($this->extra)) {
-//        $out .= " (".implode(',',$this->extra).")";
 //      }
       if ($this->action == 'change') {
         foreach($this->extra as $i => $v) {
