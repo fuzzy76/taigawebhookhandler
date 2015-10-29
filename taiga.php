@@ -55,6 +55,7 @@ class TaigaWebhook {
         $extra = array($diffi => $diffv->to);
         switch ($diffi) {
           case 'assigned_to':
+            $action = 'assigned_to';
             $extra = array($diffi => $this->data->data->assigned_to->name);
             break;
           case 'description_html':
@@ -140,12 +141,12 @@ class TaigaEvent {
       'Postponed' => 'postponed'
     );
 
-    $out = 'undefined action '.$this->action;
+    $out = 'undefined action ' . $this->action;
     if (isset($verb[$this->action])) {
       $out = $verb[$this->action];
 //      }
       if ($this->action == 'change') {
-        foreach($this->extra as $i => $v) {
+        foreach ($this->extra as $i => $v) {
           $out .= " ($i=$v)";
         }
       }
@@ -154,9 +155,12 @@ class TaigaEvent {
     if ($this->action == 'statuschange') {
       if (isset($statusverb[$this->extra])) {
         $out = $statusverb[$this->extra];
-      } else {
-        $out = 'changed status to "'.$this->extra.'"';
       }
+      else {
+        $out = 'changed status to "' . $this->extra . '"';
+      }
+    } else if ($this->action == 'assigned_to') {
+      $out = "assigned to {$this->extra}";
     }
     return $out;
   }
