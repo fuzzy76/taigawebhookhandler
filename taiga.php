@@ -58,6 +58,7 @@ class TaigaWebhook {
             $extra = array($diffi => $this->data->data->assigned_to->name);
             break;
           case 'description_html':
+          case 'content_html':
           case 'taskboard_order':
           case 'finish_date':
             $action = NULL;
