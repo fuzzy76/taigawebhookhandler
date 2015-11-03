@@ -62,6 +62,7 @@ class TaigaWebhook {
           case 'content_html':
           case 'taskboard_order':
           case 'finish_date':
+          case 'watchers':
             $action = NULL;
             break;
           case 'status':
